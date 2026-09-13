@@ -1,0 +1,18 @@
+Genotek → GEDCOM
+Copyright (C) 2026 alexeimotkoff
+
+Project: https://github.com/alexeimotkoff/GenotekDownloader
+SPDX-License-Identifier: GPL-3.0-only
+
+This project is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation, version 3 only.
+
+This project is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License in LICENSE for more details.
+
+Third-party sources and acknowledgements are documented separately in
+THIRD-PARTY-NOTICES.md. Their notices and licenses remain applicable
+to their respective material.

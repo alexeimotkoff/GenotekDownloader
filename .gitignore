@@ -1,0 +1,34 @@
+node_modules/
+dist/
+coverage/
+
+# Personal exports and diagnostic data
+private/
+*.ged
+*.gedcom
+*.gdz
+*.gramps
+*.har
+*.log
+*.heapsnapshot
+
+# Credentials and browser authentication state
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+.auth/
+playwright/.auth/
+storage-state*.json
+storageState*.json
+auth-state*.json
+browser-profile/
+chrome-profile/
+
+# Generated browser test reports
+playwright-report/
+test-results/

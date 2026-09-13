@@ -1,0 +1,70 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 alexeimotkoff -->
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Genotek GEDCOM — проверка на вымышленных данных</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #173c37; background: #f2f7f5; font: 15px/1.5 system-ui, sans-serif; }
+    .sidebar { position: fixed; inset: 0 auto 0 0; width: 205px; background: #fff; padding: 26px; border-right: 1px solid #dce6e1; }
+    h1 { font-size: 24px; margin: 0 0 35px; } .sidebar p { font-size: 14px; }
+    main { margin-left: 205px; }
+    .tree__header { background: #fff; border-bottom: 1px solid #dce6e1; padding: 22px 30px; }
+    .header__navbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .header__navbar-controls { display: flex; align-items: center; gap: 12px; }
+    .graph-mode-filters__tabs { display: flex; gap: 8px; }
+    .graph-mode-filters__tab { cursor: pointer; border-radius: 9px; padding: 8px 12px; }
+    .graph-mode-filters__tab--active { background: #dcefe8; }
+    .graph-mode-filters__tab-number { color: #637c74; font-size: 13px; }
+    .intro { margin: 36px; max-width: 800px; } .intro h2 { font-size: 28px; }
+    .cards { display: flex; flex-wrap: wrap; gap: 18px; margin: 36px; max-width: 840px; }
+    .person { padding: 22px; border: 1px solid #d3e5dc; background: white; border-radius: 14px; min-width: 210px; }
+    .person p { margin: 7px 0 0; font-size: 13px; color: #58776c; }
+    .controls { margin: 36px; display: flex; gap: 12px; }
+    .controls button { border: 1px solid #c0d5cb; border-radius: 6px; padding: 8px 12px; cursor: pointer; background: #fff; }
+    #status { margin: 0 36px; }
+    .tree__actions { position: fixed; top: 150px; right: 20px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; z-index: 10; }
+    .tree__actions-btn { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 8px; background: #fff; color: #737373; box-shadow: 0 2px 25px #0000001a; cursor: pointer; transition: .25s; }
+    .tree__actions-btn:hover { background: #113566; color: #fff; }
+    .tree__actions-btn svg { width: 22px; height: 22px; }
+    .tree__actions-btn--toggle { font-size: 22px; letter-spacing: 1px; }
+    .tree__zoom { border-radius: 8px; box-shadow: 0 2px 25px #0000001a; overflow: hidden; }
+    .tree__zoom .tree__actions-btn { border-radius: 0; box-shadow: none; font-size: 28px; font-weight: 300; }
+    .intro, .cards { padding-right: 44px; }
+    @media(max-width:850px) { .sidebar { display: none; } main { margin: 0; } .header__navbar { flex-wrap: wrap; } }
+  </style>
+  <script src="/demo/demo.js" defer></script>
+  <script src="/extension/capture.js" defer></script>
+  <script src="/extension/core/dates.js" defer></script>
+  <script src="/extension/core/graph.js" defer></script>
+  <script src="/extension/core/places.js" defer></script>
+  <script src="/extension/core/gedcom.js" defer></script>
+  <script src="/extension/content.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar"><h1>🌳 GEDCOM</h1><p>Проверка расширения</p><p>Только вымышленные люди</p></aside>
+  <main>
+    <div class="tree__header"><div class="header__navbar">
+      <div class="header__navbar-controls"><strong>Древо</strong></div>
+      <div class="graph-mode-filters__tabs">
+        <div class="graph-mode-filters__tab graph-mode-filters__tab--synthetic-tree--close graph-mode-filters__tab--active" role="button" tabindex="0" data-mode="close"><span class="graph-mode-filters__tab-label">Близкие</span> <span class="graph-mode-filters__tab-number">3</span></div>
+        <div class="graph-mode-filters__tab graph-mode-filters__tab--synthetic-tree--all" role="button" tabindex="0" data-mode="all"><span class="graph-mode-filters__tab-label">Все</span> <span class="graph-mode-filters__tab-number">6</span></div>
+      </div>
+    </div></div>
+    <div class="tree__actions" aria-label="Панель древа">
+      <div class="tree__search-btn"><button class="tree__actions-btn" type="button" aria-label="Поиск"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/></svg></button></div>
+      <button class="tree__actions-btn" type="button" aria-label="К центру древа"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m3 10 18-7-7 18-3-8Z"/></svg></button>
+      <button class="tree__actions-btn" type="button" aria-label="Скачать древо в PDF"><svg class="icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v14m-5-5 5 5 5-5M3 21h18"/></svg></button>
+      <div class="tree__actions-btn-box"><button class="tree__actions-btn tree__actions-btn--toggle" type="button" aria-label="Ещё">•••</button></div>
+      <div class="tree__zoom"><button class="tree__actions-btn" type="button" aria-label="Приблизить">+</button><button class="tree__actions-btn" type="button" aria-label="Отдалить">−</button></div>
+    </div>
+    <section class="intro"><h2>Всё древо — одним файлом</h2><p>Демонстрация использует настоящие скрипты расширения и локальные вымышленные ответы API. Кнопка «Скачать GEDCOM» включает «Все» и экспортирует шесть людей в три семьи.</p></section>
+    <div id="status" role="status">Загрузка…</div>
+    <div class="cards" id="cards"></div>
+    <div class="controls"><button id="simulate-count">Завысить счётчик на 1</button><button id="simulate-error">Проверить ошибку сети</button><button id="restore">Восстановить древо</button></div>
+  </main>
+</body>
+</html>
