@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Genotek → GEDCOM",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Скачивание полного генеалогического древа Genotek в GEDCOM 5.5.1. Обработка локально в браузере.",
   "minimum_chrome_version": "111",
   "content_scripts": [

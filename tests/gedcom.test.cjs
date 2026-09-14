@@ -35,10 +35,12 @@ test('exports a valid UTF-8 GEDCOM header, Cyrillic name and complete trailer', 
     ]),
   );
   assert.equal(result.peopleCount, 1);
-  assert.match(result.text, /^0 HEAD\r\n/);
-  assert.match(result.text, /1 GEDC\r\n2 VERS 5\.5\.1\r\n2 FORM LINEAGE-LINKED/);
-  assert.match(result.text, /1 CHAR UTF-8/);
+  assert.match(
+    result.text,
+    /^0 HEAD\r\n1 SOUR GENOTEK_GEDCOM\r\n2 NAME Genotek GEDCOM Export\r\n2 VERS 1\.0\.6\r\n1 CHAR UTF-8\r\n1 DATE 13 SEP 2026\r\n1 GEDC\r\n2 VERS 5\.5\.1\r\n2 FORM Lineage-Linked\r\n1 SUBM @U1@\r\n0 @U1@ SUBM\r\n/,
+  );
   assert.match(result.text, /1 NAME Имя Отчество \/Фамилия\//);
+  assert.doesNotMatch(result.text.split(/^0 @/m)[0], /^1 (?:LANG|NOTE)\b/m);
   assert.match(result.text, /0 TRLR\r\n$/);
   assert.ok(!/(?<!\r)\n/.test(result.text));
 });
@@ -116,8 +118,12 @@ test('supports maiden names, alternate names, death without a date and places wi
       }),
     ]),
   );
-  assert.match(text, /1 NAME Имя \/ДевичьяФамилия\/\r\n2 TYPE birth/);
-  assert.match(text, /1 NAME ДругоеИмя \/Фамилия\//);
+  assert.match(
+    text,
+    /1 NAME Имя \/ДевичьяФамилия\/\r\n2 GIVN Имя\r\n2 SURN ДевичьяФамилия\r\n2 _MARNM Фамилия/,
+  );
+  assert.doesNotMatch(text, /2 TYPE birth/);
+  assert.match(text, /1 NAME ДругоеИмя \/ДевичьяФамилия\//);
   assert.match(text, /1 BIRT\r\n2 PLAC Тула/);
   assert.match(text, /1 DEAT\r\n2 PLAC Россия, город Ярославль/);
 });
@@ -154,7 +160,7 @@ test('exports a readable Genotek place and a GEDCOM map with source coordinate p
   );
   assert.ok(!text.includes('300000'));
   assert.ok(!text.includes('RU-TUL'));
-  assert.match(text, /2 NOTE Другие записи места в Genotek: Россия, г Тула/);
+  assert.doesNotMatch(text, /^2 NOTE\b/m);
 });
 
 test('exports explicit nationality values as NATI without inferring missing values', () => {
@@ -236,7 +242,7 @@ test('keeps unknown places without coordinates and protects place and nationalit
   assert.equal((text.match(/^0 TRLR/gm) || []).length, 1);
 });
 
-test('writes birth and death coordinates at the correct levels and preserves alternative locations', () => {
+test('writes coordinates at the correct levels without technical alternative-place notes', () => {
   const { text } = convert(
     graph([
       person('hemispheres', 'Male', {
@@ -249,7 +255,7 @@ test('writes birth and death coordinates at the correct levels and preserves alt
     ]),
   );
   assert.match(text, /2 PLAC Первая точка\r\n3 MAP\r\n4 LATI S12\.5\r\n4 LONG W45\.25/);
-  assert.match(text, /2 NOTE Другие записи места в Genotek: Вторая точка \(N10\.25, E20\.5\)/);
+  assert.doesNotMatch(text, /^2 NOTE\b/m);
   assert.match(text, /1 DEAT\r\n2 PLAC Нулевая точка\r\n3 MAP\r\n4 LATI N0\r\n4 LONG E0/);
 });
 
@@ -257,6 +263,7 @@ test('serializes long notes without line injection, broken Unicode or overlong l
   const note = 'Кириллица 🌳 @семья@ '.repeat(100) + '\n0 TRLR\nПродолжение';
   const { text } = convert(graph([person('p', 'Male', { notes: [note] })]));
   assert.equal((text.match(/^0 TRLR/gm) || []).length, 1);
+  assert.ok(!text.includes('Примечания:'));
   assert.match(text, /@@семья@@/);
   assert.match(text, /2 CONT 0 TRLR/);
   for (const line of text.split('\r\n')) {
@@ -315,15 +322,26 @@ test('rejects cycles and ambiguous biological parent sets', () => {
   );
 });
 
-test('keeps unknown source fields in notes without copying layout or authentication data', () => {
+test('exports human text without technical labels or JSON notes', () => {
   const { text } = convert(
-    graph([person('p', 'Male', { occupation: ['Учитель'], biography: 'Жил в деревне' })]),
+    graph([
+      person('p', 'Male', {
+        notes: ['Пользовательская заметка', { internal: true }],
+        biography: 'Жил в деревне',
+        occupation: ['Учитель'],
+        education: ['Школа'],
+      }),
+    ]),
   );
-  assert.ok(text.includes('Учитель'));
-  assert.ok(text.includes('Жил в деревне'));
+  const record = personBySource(text, 'p');
+  assert.match(record, /^1 OCCU Учитель$/m);
+  assert.match(record, /^1 EDUC Школа$/m);
+  assert.match(record, /^1 NOTE Пользовательская заметка$/m);
+  assert.match(record, /^1 NOTE Жил в деревне$/m);
+  assert.doesNotMatch(record, /Примечания:|Биография:|\{"internal":true\}/);
 });
 
-test('does not invent precise dates and preserves invalid source dates as notes', () => {
+test('does not invent precise dates or serialize invalid source dates as notes', () => {
   assert.equal(formatDate({ year: 1901 }), '1901');
   assert.equal(formatDate({ year: 1901, month: 2 }), 'FEB 1901');
   assert.equal(formatDate({ year: 1904, month: 2, day: 29 }), '29 FEB 1904');
@@ -337,7 +355,7 @@ test('does not invent precise dates and preserves invalid source dates as notes'
   );
   assert.ok(warnings.length > 0);
   assert.ok(!text.includes('2 DATE 29 FEB 1901'));
-  assert.ok(text.includes('1901'));
+  assert.doesNotMatch(personBySource(text, 'p'), /^2 NOTE\b/m);
 });
 
 test('skips empty date alternatives without losing the first populated date', () => {
@@ -380,7 +398,16 @@ test('a confirmed full-tree response exports 42 people despite the site counter 
   assert.equal(result.peopleCount, 42);
   assert.ok(result.warnings.some((warning) => warning.includes('43') && warning.includes('42')));
   const header = result.text.split(/^0 @/m)[0];
-  assert.match(header, /1 NOTE .*43.*42/);
+  assert.doesNotMatch(header, /^1 NOTE\b/m);
+});
+
+test('does not serialize partnership metadata as family notes', () => {
+  const { text } = convert(blendedFamily());
+  for (const family of records(text, 'FAM')) {
+    assert.doesNotMatch(family, /^1 NOTE\b/m);
+  }
+  assert.ok(!text.includes('Исходные сведения о партнёрстве Genotek'));
+  assert.ok(!text.includes('"type":"official"'));
 });
 
 test('the full_tree counter still blocks unknown or filtered requests', () => {

@@ -120,11 +120,16 @@ test('preserves unknown address details even when a country field is present', (
   );
 });
 
-test('retains the original packed string as a source note after conversion', () => {
+test('does not duplicate a converted packed place as a technical note', () => {
   const packed =
     '300000, Россия, RU, Центральный, RU-TUL, Тульская, Тула, 54.1234567, 37.7654321, 4';
-  const text = exported([], [packed]).replace(/\r\n3 CONC /g, '');
-  assert.ok(text.includes('2 NOTE Другие записи места в Genotek: ' + packed));
+  const text = exported([], [packed]);
+  assert.match(
+    text,
+    /2 PLAC Россия, Тульская область, Тула\r\n3 MAP\r\n4 LATI N54\.1234567\r\n4 LONG E37\.7654321/,
+  );
+  assert.doesNotMatch(text, /^2 NOTE\b/m);
+  assert.ok(!text.includes(packed));
 });
 
 test('rejects empty, partial, non-finite, injected and out-of-range coordinate pairs', () => {
@@ -180,11 +185,11 @@ test('keeps same-name places at different administrative levels', () => {
   );
 });
 
-test('retains distinct coordinates of same-name places as alternatives', () => {
+test('uses the first same-name place without a technical alternatives note', () => {
   const text = exported([
     { city: 'Одинаковое название', geo_lat: '10', geo_lon: '20' },
     { city: 'Одинаковое название', geo_lat: '11', geo_lon: '21' },
   ]);
   assert.match(text, /4 LATI N10\r\n4 LONG E20/);
-  assert.match(text, /2 NOTE Другие записи места в Genotek: Одинаковое название \(N11, E21\)/);
+  assert.doesNotMatch(text, /^2 NOTE\b/m);
 });

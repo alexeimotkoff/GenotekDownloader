@@ -13,14 +13,10 @@
   const { formatDate, MONTHS } = dates;
   const { normalizeGraph, list, first } = graphApi;
   const { normalizePlaces } = placesApi;
-  const PERSON_NOTE_FIELDS = [
-    ['notes', 'Примечания'],
-    ['note', 'Примечание'],
-    ['biography', 'Биография'],
-    ['description', 'Описание'],
-    ['comment', 'Комментарий'],
-    ['occupation', 'Род занятий'],
-    ['education', 'Образование'],
+  const PERSON_NOTE_FIELDS = ['notes', 'note', 'biography', 'description', 'comment'];
+  const PERSON_FACT_FIELDS = [
+    ['occupation', 'OCCU'],
+    ['education', 'EDUC'],
   ];
 
   function cleanText(value) {
@@ -82,10 +78,20 @@
     }
   }
 
-  function writeNote(writer, label, value, level = 1) {
-    const values = uniqueValues(list(value));
-    if (values.length) {
-      writer.field(level, 'NOTE', label + ': ' + values.join('; '));
+  function userTextValues(value) {
+    return [
+      ...new Set(
+        list(value)
+          .filter((item) => typeof item === 'string')
+          .map(cleanText)
+          .filter((item) => item.trim()),
+      ),
+    ];
+  }
+
+  function writeTextFields(writer, tag, value) {
+    for (const item of userTextValues(value)) {
+      writer.field(1, tag, item);
     }
   }
 
@@ -97,13 +103,6 @@
       return true;
     }
     return Object.values(value).some((part) => part != null && part !== '' && part !== 0);
-  }
-
-  function formatPlaceWithCoordinates(place) {
-    if (!place.coordinates) {
-      return place.text;
-    }
-    return `${place.text} (${place.coordinates.latitude}, ${place.coordinates.longitude})`;
   }
 
   function writeEvent(
@@ -133,23 +132,17 @@
       }
     }
     if (date === null) {
-      writeNote(writer, 'Дата в Genotek', primary, 2);
-      warnings.push(`${label}: исходная дата сохранена примечанием.`);
+      warnings.push(`${label}: некорректная исходная дата не выгружена.`);
     }
     if (values.length > 1) {
-      writeNote(writer, 'Другие даты в Genotek', values.slice(1), 2);
+      warnings.push(`${label}: выгружена только первая дата.`);
     }
     if (places.length > 1) {
-      writeNote(
-        writer,
-        'Другие записи места в Genotek',
-        places.slice(1).map(formatPlaceWithCoordinates),
-        2,
-      );
+      warnings.push(`${label}: выгружено только первое место.`);
     }
   }
 
-  function writeHeader(writer, currentDate, warnings) {
+  function writeHeader(writer, currentDate) {
     const gedcomDate = [
       currentDate.getUTCDate(),
       MONTHS[currentDate.getUTCMonth()],
@@ -158,27 +151,25 @@
 
     writer.raw('0 HEAD');
     writer.field(1, 'SOUR', 'GENOTEK_GEDCOM');
-    writer.field(2, 'VERS', '1.0.5');
     writer.field(2, 'NAME', 'Genotek GEDCOM Export');
+    writer.field(2, 'VERS', '1.0.6');
+    writer.field(1, 'CHAR', 'UTF-8');
     writer.field(1, 'DATE', gedcomDate);
-    writer.pointer(1, 'SUBM', '@SUB1@');
     writer.field(1, 'GEDC');
     writer.field(2, 'VERS', '5.5.1');
-    writer.field(2, 'FORM', 'LINEAGE-LINKED');
-    writer.field(1, 'CHAR', 'UTF-8');
-    writer.field(1, 'LANG', 'Russian');
-    for (const warning of warnings) {
-      writer.field(1, 'NOTE', warning);
-    }
-    writer.raw('0 @SUB1@ SUBM');
+    writer.field(2, 'FORM', 'Lineage-Linked');
+    writer.pointer(1, 'SUBM', '@U1@');
+    writer.raw('0 @U1@ SUBM');
     writer.field(1, 'NAME', 'Владелец древа Genotek');
   }
 
-  function writeName(writer, givenName, middleName, surname, nameType) {
-    // Косая черта разделяет фамилию в GEDCOM, поэтому исходное значение сохраняется отдельно.
-    const components = [givenName, middleName, surname].map((value) =>
-      cleanText(value).replace(/[\n/]/g, ' ').replace(/\s+/g, ' ').trim(),
-    );
+  function cleanNamePart(value) {
+    return cleanText(value).replace(/[\n/]/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function writeName(writer, givenName, middleName, surname, nameType, marriedNames = []) {
+    // Косая черта разделяет фамилию в GEDCOM, поэтому части имени предварительно очищаются.
+    const components = [givenName, middleName, surname].map(cleanNamePart);
     const firstNames = [components[0], components[1]].filter(Boolean).join(' ');
     if (!firstNames && !components[2]) {
       return;
@@ -194,6 +185,9 @@
     if (components[2]) {
       writer.field(2, 'SURN', components[2]);
     }
+    for (const marriedName of uniqueValues(marriedNames.map(cleanNamePart))) {
+      writer.field(2, '_MARNM', marriedName);
+    }
   }
 
   function writePerson(writer, warnings, person) {
@@ -204,27 +198,39 @@
     const middleNames = uniqueValues(list(card.middleName));
     const surnames = uniqueValues(list(card.surname));
     const maidenNames = uniqueValues(list(card.maidenName));
+    const birthSurname = maidenNames[0] || surnames[0];
+    const marriedNames = maidenNames.length ? surnames : [];
 
-    writeName(writer, names[0], middleNames[0], surnames[0]);
-    for (const maidenName of maidenNames) {
-      writeName(writer, names[0], middleNames[0], maidenName, 'birth');
+    writer.field(1, 'REFN', person.id);
+    writer.field(2, 'TYPE', 'Genotek card ID');
+    writeName(writer, names[0], middleNames[0], birthSurname, null, marriedNames);
+    for (const alternativeMaidenName of maidenNames.slice(1)) {
+      writeName(writer, names[0], middleNames[0], alternativeMaidenName, 'aka', marriedNames);
     }
     for (const alternativeName of names.slice(1)) {
-      writeName(writer, alternativeName, middleNames[0], surnames[0], 'aka');
+      writeName(writer, alternativeName, middleNames[0], birthSurname, 'aka', marriedNames);
     }
-    for (const alternativeSurname of surnames.slice(1)) {
-      writeName(writer, names[0], middleNames[0], alternativeSurname, 'aka');
+    if (!maidenNames.length) {
+      for (const alternativeSurname of surnames.slice(1)) {
+        writeName(writer, names[0], middleNames[0], alternativeSurname, 'aka');
+      }
     }
-    if (middleNames.length > 1) {
-      writeNote(writer, 'Варианты отчества', middleNames.slice(1));
+    for (const alternativeMiddleName of middleNames.slice(1)) {
+      writeName(writer, names[0], alternativeMiddleName, birthSurname, 'aka', marriedNames);
     }
 
     const allNameParts = [...names, ...middleNames, ...surnames, ...maidenNames];
     if (allNameParts.some((namePart) => /[\n/]/.test(namePart))) {
-      writeNote(writer, 'Исходные имена Genotek', allNameParts);
+      warnings.push('Имена с переводами строк или косыми чертами нормализованы.');
     }
 
     writer.field(1, 'SEX', person.sex);
+    const ethnicities = list(card.ethnicity).filter(
+      (value) => typeof value === 'string' && value.trim(),
+    );
+    for (const ethnicity of uniqueValues(ethnicities)) {
+      writer.field(1, 'NATI', ethnicity);
+    }
     writeEvent(writer, warnings, {
       tag: 'BIRT',
       sourceDates: card.birthdate,
@@ -240,31 +246,25 @@
       knownEvent: lifeStatus === 0 || lifeStatus === '0',
     });
 
-    const ethnicities = list(card.ethnicity).filter(
-      (value) => typeof value === 'string' && value.trim(),
-    );
-    for (const ethnicity of uniqueValues(ethnicities)) {
-      writer.field(1, 'NATI', ethnicity);
-    }
-    for (const [field, label] of PERSON_NOTE_FIELDS) {
-      writeNote(writer, label, card[field]);
-    }
-
     const unknownRelations = (card.relatives || []).filter(
       (relation) =>
         !['parent', 'child', 'spouse'].includes(String(relation.relationType).toLowerCase()),
     );
     if (unknownRelations.length) {
-      writeNote(writer, 'Дополнительные родственные связи Genotek', unknownRelations);
+      warnings.push('Дополнительные родственные связи не выгружены.');
     }
 
-    writer.field(1, 'REFN', person.id);
-    writer.field(2, 'TYPE', 'Genotek card ID');
+    for (const [field, tag] of PERSON_FACT_FIELDS) {
+      writeTextFields(writer, tag, card[field]);
+    }
     for (const familyXref of person.famc) {
       writer.pointer(1, 'FAMC', familyXref);
     }
     for (const familyXref of person.fams) {
       writer.pointer(1, 'FAMS', familyXref);
+    }
+    for (const field of PERSON_NOTE_FIELDS) {
+      writeTextFields(writer, 'NOTE', card[field]);
     }
   }
 
@@ -312,11 +312,6 @@
     writeFamilyMembers(writer, family);
 
     if (hasAmbiguousFamilyRoles(family)) {
-      writeNote(
-        writer,
-        'Роли HUSB/WIFE',
-        'Технические позиции формата GEDCOM 5.5.1; пол указан в записи человека.',
-      );
       warnings.push(
         'В семье с неизвестным или одинаковым полом родителей HUSB/WIFE обозначают позиции формата.',
       );
@@ -349,23 +344,13 @@
         });
       }
     }
-    if (relationships.some((relationship) => relationship.type !== 'official')) {
-      writeNote(writer, 'Связь в Genotek', 'Партнёрство; официальный брак не указан.');
-    }
-    if (relationships.length) {
-      writeNote(
-        writer,
-        'Исходные сведения о партнёрстве Genotek',
-        relationships.map(({ with: partner, ...relationshipDetails }) => relationshipDetails),
-      );
-    }
   }
 
   function convertGraph(graph, options = {}) {
     const { people, families, warnings } = normalizeGraph(graph, options);
     const writer = new Writer();
     const currentDate = options.now || new Date();
-    writeHeader(writer, currentDate, warnings);
+    writeHeader(writer, currentDate);
 
     for (const person of people) {
       writePerson(writer, warnings, person);
