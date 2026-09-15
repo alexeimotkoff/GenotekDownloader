@@ -37,12 +37,46 @@ test('exports a valid UTF-8 GEDCOM header, Cyrillic name and complete trailer', 
   assert.equal(result.peopleCount, 1);
   assert.match(
     result.text,
-    /^0 HEAD\r\n1 SOUR GENOTEK_GEDCOM\r\n2 NAME Genotek GEDCOM Export\r\n2 VERS 1\.0\.6\r\n1 CHAR UTF-8\r\n1 DATE 13 SEP 2026\r\n1 GEDC\r\n2 VERS 5\.5\.1\r\n2 FORM Lineage-Linked\r\n1 SUBM @U1@\r\n0 @U1@ SUBM\r\n/,
+    /^0 HEAD\r\n1 SOUR GENOTEK_GEDCOM\r\n2 NAME Genotek GEDCOM Export\r\n2 VERS 1\.0\.7\r\n1 CHAR UTF-8\r\n1 DATE 13 SEP 2026\r\n1 GEDC\r\n2 VERS 5\.5\.1\r\n2 FORM Lineage-Linked\r\n1 SUBM @U1@\r\n0 @U1@ SUBM\r\n/,
   );
   assert.match(result.text, /1 NAME Имя Отчество \/Фамилия\//);
   assert.doesNotMatch(result.text.split(/^0 @/m)[0], /^1 (?:LANG|NOTE)\b/m);
   assert.match(result.text, /0 TRLR\r\n$/);
   assert.ok(!/(?<!\r)\n/.test(result.text));
+});
+
+test('writes current surnames as _MARNM and SURN only for explicit birth surnames', () => {
+  const { text } = convert(
+    graph([
+      person('man', 'Male', { name: ['Алексей'], surname: ['Тестовый'] }),
+      person('woman', 'Female', { surname: ['Иванова'] }),
+      person('birth-only', 'Female', { surname: [], maidenName: ['Петрова'] }),
+      person('alternatives', 'Male', { surname: ['Сидоров', 'Кузнецов'] }),
+    ]),
+  );
+
+  const man = personBySource(text, 'man');
+  assert.match(man, /1 NAME Алексей \/Тестовый\/\r\n2 GIVN Алексей\r\n2 _MARNM Тестовый/);
+  assert.doesNotMatch(man, /^2 SURN\b/m);
+
+  const woman = personBySource(text, 'woman');
+  assert.match(woman, /^2 _MARNM Иванова$/m);
+  assert.doesNotMatch(woman, /^2 SURN\b/m);
+
+  const birthOnly = personBySource(text, 'birth-only');
+  assert.match(birthOnly, /^2 SURN Петрова$/m);
+  assert.doesNotMatch(birthOnly, /^2 _MARNM\b/m);
+
+  const alternatives = personBySource(text, 'alternatives');
+  assert.match(
+    alternatives,
+    /1 NAME Имя alternatives \/Сидоров\/\r\n2 GIVN Имя alternatives\r\n2 _MARNM Сидоров/,
+  );
+  assert.match(
+    alternatives,
+    /1 NAME Имя alternatives \/Кузнецов\/\r\n2 TYPE aka\r\n2 GIVN Имя alternatives\r\n2 _MARNM Кузнецов/,
+  );
+  assert.doesNotMatch(alternatives, /^2 SURN\b/m);
 });
 
 test('keeps children with their exact parents across multiple marriages', () => {

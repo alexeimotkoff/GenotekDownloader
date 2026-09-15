@@ -152,7 +152,7 @@
     writer.raw('0 HEAD');
     writer.field(1, 'SOUR', 'GENOTEK_GEDCOM');
     writer.field(2, 'NAME', 'Genotek GEDCOM Export');
-    writer.field(2, 'VERS', '1.0.6');
+    writer.field(2, 'VERS', '1.0.7');
     writer.field(1, 'CHAR', 'UTF-8');
     writer.field(1, 'DATE', gedcomDate);
     writer.field(1, 'GEDC');
@@ -167,9 +167,17 @@
     return cleanText(value).replace(/[\n/]/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
-  function writeName(writer, givenName, middleName, surname, nameType, marriedNames = []) {
+  function writeName(
+    writer,
+    givenName,
+    middleName,
+    displaySurname,
+    nameType,
+    birthSurname,
+    currentSurnames = [],
+  ) {
     // Косая черта разделяет фамилию в GEDCOM, поэтому части имени предварительно очищаются.
-    const components = [givenName, middleName, surname].map(cleanNamePart);
+    const components = [givenName, middleName, displaySurname].map(cleanNamePart);
     const firstNames = [components[0], components[1]].filter(Boolean).join(' ');
     if (!firstNames && !components[2]) {
       return;
@@ -182,11 +190,12 @@
     if (firstNames) {
       writer.field(2, 'GIVN', firstNames);
     }
-    if (components[2]) {
-      writer.field(2, 'SURN', components[2]);
+    // В эталоне SURN означает фамилию при рождении, а _MARNM — текущую фамилию независимо от пола.
+    if (birthSurname) {
+      writer.field(2, 'SURN', cleanNamePart(birthSurname));
     }
-    for (const marriedName of uniqueValues(marriedNames.map(cleanNamePart))) {
-      writer.field(2, '_MARNM', marriedName);
+    for (const currentSurname of uniqueValues(currentSurnames.map(cleanNamePart))) {
+      writer.field(2, '_MARNM', currentSurname);
     }
   }
 
@@ -198,25 +207,60 @@
     const middleNames = uniqueValues(list(card.middleName));
     const surnames = uniqueValues(list(card.surname));
     const maidenNames = uniqueValues(list(card.maidenName));
-    const birthSurname = maidenNames[0] || surnames[0];
-    const marriedNames = maidenNames.length ? surnames : [];
+    const birthSurname = maidenNames[0] || null;
+    const displaySurname = birthSurname || surnames[0];
+    const currentSurnames = maidenNames.length ? surnames : surnames.slice(0, 1);
 
     writer.field(1, 'REFN', person.id);
     writer.field(2, 'TYPE', 'Genotek card ID');
-    writeName(writer, names[0], middleNames[0], birthSurname, null, marriedNames);
+    writeName(
+      writer,
+      names[0],
+      middleNames[0],
+      displaySurname,
+      null,
+      birthSurname,
+      currentSurnames,
+    );
     for (const alternativeMaidenName of maidenNames.slice(1)) {
-      writeName(writer, names[0], middleNames[0], alternativeMaidenName, 'aka', marriedNames);
+      writeName(
+        writer,
+        names[0],
+        middleNames[0],
+        alternativeMaidenName,
+        'aka',
+        alternativeMaidenName,
+        currentSurnames,
+      );
     }
     for (const alternativeName of names.slice(1)) {
-      writeName(writer, alternativeName, middleNames[0], birthSurname, 'aka', marriedNames);
+      writeName(
+        writer,
+        alternativeName,
+        middleNames[0],
+        displaySurname,
+        'aka',
+        birthSurname,
+        currentSurnames,
+      );
     }
     if (!maidenNames.length) {
       for (const alternativeSurname of surnames.slice(1)) {
-        writeName(writer, names[0], middleNames[0], alternativeSurname, 'aka');
+        writeName(writer, names[0], middleNames[0], alternativeSurname, 'aka', null, [
+          alternativeSurname,
+        ]);
       }
     }
     for (const alternativeMiddleName of middleNames.slice(1)) {
-      writeName(writer, names[0], alternativeMiddleName, birthSurname, 'aka', marriedNames);
+      writeName(
+        writer,
+        names[0],
+        alternativeMiddleName,
+        displaySurname,
+        'aka',
+        birthSurname,
+        currentSurnames,
+      );
     }
 
     const allNameParts = [...names, ...middleNames, ...surnames, ...maidenNames];
